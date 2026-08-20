@@ -7,6 +7,8 @@ import math
 import requests
 import json
 from telebot import apihelper
+from flask import Flask
+import os
 
 apihelper.ENABLE_MIDDLEWARE = True
 BOT_TOKEN = "8816998757:AAG5cDraR1QDqdOT1wCPichB41tZdVi-qcI"
@@ -14,6 +16,7 @@ ADMIN_ID = 8447611962
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 
 VOUCHERS = {}
 USERS = {}
@@ -38,13 +41,12 @@ def fmt_duration(seconds: int) -> str:
     m, s = divmod(seconds, 60)
     return f"{m}m {s:02d}s" if s else f"{m}m"
 
-# ────────────────────────── Raw API helpers (برای style دکمه) ──────────────────────────
+# ────────────────────────── Raw API helpers ──────────────────────────
 
 def _btn(text, callback_data, style=None):
-    """ساخت دیکشنری دکمه با پشتیبانی از style."""
     b = {"text": text, "callback_data": callback_data}
     if style:
-        b["style"] = style  # "primary" | "success" | "danger"
+        b["style"] = style
     return b
 
 def _send_msg(chat_id, text, reply_markup=None, parse_mode="Markdown"):
@@ -70,7 +72,7 @@ def _answer_callback(callback_id, text=None, show_alert=False):
         payload["text"] = text
     requests.post(f"{API_URL}/answerCallbackQuery", json=payload)
 
-# ────────────────────────── Keyboards (raw dict با style) ──────────────────────────
+# ────────────────────────── Keyboards ──────────────────────────
 
 def kb_main_menu():
     return {"inline_keyboard": [
@@ -119,6 +121,16 @@ def kb_enter_voucher():
     return {"inline_keyboard": [
         [_btn("🔑 Authenticate & Enter License", "enter_voucher", style="primary")],
     ]}
+
+# ────────────────────────── Flask routes ──────────────────────────
+
+@app.route("/")
+def index():
+    return "✅ Omni Bot is running.", 200
+
+@app.route("/health")
+def health():
+    return "OK", 200
 
 # ────────────────────────── Admin handlers ──────────────────────────
 
@@ -318,7 +330,7 @@ def callback_query(call):
             bot.register_next_step_handler(msg, admin_process_add_acc)
 
         elif call.data == "admin_del_acc":
-            text = "🗄 ** Accounts Status:**\n\n"
+            text = "🗄 **Accounts Status:**\n\n"
             if not VIRTUAL_ACCOUNTS:
                 text += "The DB is currently empty."
             else:
@@ -340,7 +352,7 @@ def callback_query(call):
             _edit_msg(chat_id, msg_id, status_text, reply_markup=kb_main_menu())
 
         elif call.data == "acc_count":
-            msg = "🖥 ** Accounts Status:**\n\n"
+            msg = "🖥 **Accounts Status:**\n\n"
             if not VIRTUAL_ACCOUNTS:
                 msg += "⚠️ Processing accounts are currently offline."
             else:
@@ -495,6 +507,14 @@ def process_rep_count(message):
 
 # ────────────────────────── Run ──────────────────────────
 
-if __name__ == "__main__":
-    print("✅ Omni Bot started.")
+def run_bot():
+    print("✅ Omni Bot polling started.")
     bot.infinity_polling()
+
+if __name__ == "__main__":
+    # بات رو توی thread جداگانه استارت کن
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    # Flask رو روی پورتی که Render میده اجرا کن
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
